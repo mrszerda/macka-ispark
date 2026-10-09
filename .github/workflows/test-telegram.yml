@@ -16,7 +16,11 @@ jobs:
           python - <<'PY'
           import os
           import json
-                    print("BOT_TOKEN tanımlı mı:", bool(os.environ.get("BOT_TOKEN")))
+          import urllib.request
+          import urllib.error
+          import urllib.parse
+
+          print("BOT_TOKEN tanımlı mı:", bool(os.environ.get("BOT_TOKEN")))
           print("CHAT_ID tanımlı mı:", bool(os.environ.get("CHAT_ID")))
           import urllib.request
           import urllib.error
