@@ -17,24 +17,35 @@ jobs:
           import os
           import json
           import urllib.request
+          import urllib.error
           import urllib.parse
 
-          token = os.environ["BOT_TOKEN"]
-          chat_id = os.environ["CHAT_ID"]
+          token = os.environ.get("BOT_TOKEN", "").strip()
+          chat_id = os.environ.get("CHAT_ID", "").strip()
+
+          if not token:
+              raise SystemExit("BOT_TOKEN boş veya tanımlanmamış.")
+
+          if not chat_id:
+              raise SystemExit("CHAT_ID boş veya tanımlanmamış.")
+
+          url = f"https://api.telegram.org/bot{token}/sendMessage"
 
           data = urllib.parse.urlencode({
               "chat_id": chat_id,
-              "text": "✅ Maçka İSPARK takip sistemi: Telegram bağlantısı başarılı!"
+              "text": "Test başarılı! Maçka İSPARK takip sistemi Telegram'a bağlandı."
           }).encode()
 
-          url = f"https://api.telegram.org/bot{token}/sendMessage"
           request = urllib.request.Request(url, data=data)
 
-          with urllib.request.urlopen(request, timeout=20) as response:
-              result = json.loads(response.read())
+          try:
+              with urllib.request.urlopen(request, timeout=20) as response:
+                  result = json.loads(response.read().decode())
+                  print("Telegram API yanıtı:", json.dumps(result))
 
-          if not result.get("ok"):
-              raise RuntimeError("Telegram mesajı gönderilemedi.")
+          except urllib.error.HTTPError as e:
+              print("HTTP durum kodu:", e.code)
+              print("Telegram hata yanıtı:", e.read().decode())
+              raise SystemExit(1)
 
-          print("Telegram bildirimi başarıyla gönderildi.")
           PY
