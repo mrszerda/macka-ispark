@@ -1,4 +1,4 @@
-namename: Macka ISPARK Takip
+name: Macka ISPARK Takip
 
 on:
   workflow_dispatch:
