@@ -1,104 +1,71 @@
-name: Macka ISPARK Takip
 
+name: Macka ISPARK Yeni Sistem
 
 on:
-workflow_dispatch:
-schedule:
-- cron: '*/15 * * * *'
+  workflow_dispatch:
 
+permissions:
+  contents: read
 
 jobs:
-check-parking:
-runs-on: ubuntu-latest
+  telegram-test:
+    runs-on: ubuntu-latest
 
+    steps:
+      - name: Telegram bağlantısını kontrol et
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.CHAT_ID }}
+        run: |
+          python - <<'PY'
+          import os
+          import json
+          import urllib.request
+          import urllib.error
+          import sys
 
-steps:
-  - name: Maçka doluluk bilgisini kontrol et
-    env:
-      BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-      CHAT_ID: ${{ secrets.CHAT_ID }}
-    run: |
-      python - <<'PY'
-      import os
-      import json
-      import urllib.request
-      import urllib.parse
+          token = os.environ.get("BOT_TOKEN", "").strip()
+          chat_id = os.environ.get("CHAT_ID", "").strip()
 
-      API = "https://api.ibb.gov.tr/ispark/Park"
+          if not token or not chat_id:
+              print("HATA: BOT_TOKEN veya CHAT_ID GitHub Secrets içinden gelmedi.")
+              sys.exit(1)
 
-      token = os.environ.get("BOT_TOKEN", "").strip()
-      chat_id = os.environ.get("CHAT_ID", "").strip()
+          def telegram(method, data=None):
+              url = f"https://api.telegram.org/bot{token}/{method}"
+              payload = None
+              if data is not None:
+                  payload = json.dumps(data).encode("utf-8")
+              req = urllib.request.Request(
+                  url,
+                  data=payload,
+                  headers={"Content-Type": "application/json"}
+              )
+              try:
+                  with urllib.request.urlopen(req, timeout=20) as response:
+                      return json.loads(response.read().decode("utf-8"))
+              except urllib.error.HTTPError as e:
+                  detail = e.read().decode("utf-8", errors="replace")
+                  print(f"Telegram HTTP hatası: {e.code}")
+                  print(detail[:1000])
+                  sys.exit(1)
 
-      if not token or not chat_id:
-          raise SystemExit("BOT_TOKEN veya CHAT_ID eksik.")
+          me = telegram("getMe")
+          if not me.get("ok"):
+              print("HATA: Bot token doğrulanamadı.")
+              sys.exit(1)
 
-      req = urllib.request.Request(
-          API,
-          headers={"User-Agent": "Macka-ISPARK-Tracker/1.0"}
-      )
+          print("Bot doğrulandı:", me["result"].get("username", "bilinmiyor"))
 
-      with urllib.request.urlopen(req, timeout=30) as response:
-          data = json.loads(response.read().decode("utf-8"))
+          result = telegram("sendMessage", {
+              "chat_id": chat_id,
+              "text": "Maçka İSPARK yeni sistem bağlantı testi başarılı."
+          })
 
-      if isinstance(data, dict):
-          parks = data.get("parkList", data.get("data", []))
-      else:
-          parks = data
+          if not result.get("ok"):
+              print("HATA: Mesaj gönderilemedi.")
+              print(json.dumps(result, ensure_ascii=False))
+              sys.exit(1)
 
-      if isinstance(parks, dict):
-          parks = parks.get("park", parks.get("parkList", []))
-
-      if not isinstance(parks, list):
-          raise SystemExit("API yanıtı beklenen formatta değil.")
-
-      matches = [
-          p for p in parks
-          if "maçka" in str(p.get("parkName", p.get("name", ""))).casefold()
-          or "macka" in str(p.get("parkName", p.get("name", ""))).casefold()
-      ]
-
-      if not matches:
-          raise SystemExit(
-              "Maçka kaydı API yanıtında bulunamadı; alan adlarını kontrol etmek gerekiyor."
-          )
-
-      for p in matches:
-          print(json.dumps(p, ensure_ascii=False))
-
-      park = matches[0]
-      name = park.get("parkName", park.get("name", "Maçka Katlı Otoparkı"))
-      empty = park.get("emptyCapacity", park.get("empty_capacity"))
-      capacity = park.get("capacity")
-
-      if empty is None:
-          raise SystemExit(
-              "Maçka bulundu fakat boş kapasite alanı doğrulanamadı."
-          )
-
-      message = (
-          f"Maçka İSPARK doluluk bilgisi\n"
-          f"Otopark: {name}\n"
-          f"Boş yer: {empty}\n"
-          f"Toplam kapasite: {capacity}\n\n"
-          f"Not: Bu bilgi normal park doluluğudur; abonelik kontenjanını göstermez."
-      )
-
-      url = f"https://api.telegram.org/bot{token}/sendMessage"
-      body = urllib.parse.urlencode({
-          "chat_id": chat_id,
-          "text": message
-      }).encode()
-
-      request = urllib.request.Request(url, data=body)
-
-      with urllib.request.urlopen(request, timeout=20) as response:
-          result = json.loads(response.read().decode())
-
-      if not result.get("ok"):
-          raise SystemExit("Telegram mesajı gönderilemedi.")
-
-      print("Maçka doluluk bilgisi Telegram'a gönderildi.")
-      PY
-
-
-
+          print("BAŞARILI: Telegram mesajı gönderildi.")
+          PY
