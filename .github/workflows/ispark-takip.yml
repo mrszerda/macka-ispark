@@ -16,6 +16,10 @@ jobs:
           {{ secrets.BOT_TOKEN }}
           CHAT_ID: $
           {{ secrets.CHAT_ID }}
+          run: |
+          python - <<'PY'
+          import os
+          import json
 steps:
   - name: Maçka doluluk bilgisini kontrol et
     env:
