@@ -1,63 +1,147 @@
 
-name: Macka ISPARK Liste Analizi
+name: Macka ISPARK Abonelik Takip
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: '*/15 * * * *'
 
 permissions:
   contents: read
 
 jobs:
-  inspect:
+  check-subscription:
     runs-on: ubuntu-latest
+    timeout-minutes: 2
+
     steps:
-      - name: Abonelik sayfasını incele
+      - name: Maçka abonelik listesini kontrol et
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.CHAT_ID }}
         run: |
           python - <<'PY'
-          import urllib.request
+          import os
           import re
+          import sys
+          import json
+          import urllib.request
+          import urllib.error
+          from html.parser import HTMLParser
+
+          TOKEN = os.environ.get("BOT_TOKEN", "").strip()
+          CHAT_ID = os.environ.get("CHAT_ID", "").strip()
+
+          if not TOKEN or not CHAT_ID:
+              print("HATA: BOT_TOKEN veya CHAT_ID eksik.")
+              sys.exit(1)
+
+          class SelectParser(HTMLParser):
+              def __init__(self):
+                  super().__init__()
+                  self.in_select = False
+                  self.in_option = False
+                  self.options = []
+                  self.current = ""
+
+              def handle_starttag(self, tag, attrs):
+                  if tag.lower() == "select":
+                      self.in_select = True
+                  elif tag.lower() == "option" and self.in_select:
+                      self.in_option = True
+                      self.current = ""
+
+              def handle_data(self, data):
+                  if self.in_option:
+                      self.current += data
+
+              def handle_endtag(self, tag):
+                  if tag.lower() == "option" and self.in_option:
+                      value = self.current.strip()
+                      if value:
+                          self.options.append(value)
+                      self.in_option = False
+                  elif tag.lower() == "select":
+                      self.in_select = False
+
+          def telegram_send(message):
+              url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+              payload = json.dumps({
+                  "chat_id": CHAT_ID,
+                  "text": message
+              }).encode("utf-8")
+
+              request = urllib.request.Request(
+                  url,
+                  data=payload,
+                  headers={"Content-Type": "application/json"},
+                  method="POST"
+              )
+
+              with urllib.request.urlopen(request, timeout=20) as response:
+                  result = json.loads(response.read().decode("utf-8"))
+                  if not result.get("ok"):
+                      raise RuntimeError("Telegram mesajı gönderilemedi.")
+                  print("Telegram bildirimi gönderildi.")
 
           url = "https://ispark.istanbul/abone/"
-          req = urllib.request.Request(
+          request = urllib.request.Request(
               url,
-              headers={"User-Agent": "Mozilla/5.0"}
+              headers={
+                  "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) "
+                                "AppleWebKit/537.36 Chrome/130 Safari/537.36"
+              }
           )
 
           try:
-              with urllib.request.urlopen(req, timeout=30) as r:
-                  html = r.read().decode("utf-8", "replace")
-                  print("HTTP:", r.status)
-          except Exception as e:
-              print("SAYFA HATASI:", str(e))
-              raise SystemExit(1)
+              with urllib.request.urlopen(request, timeout=25) as response:
+                  if response.status != 200:
+                      raise RuntimeError(
+                          f"İSPARK sayfası HTTP {response.status} döndürdü."
+                      )
+                  html = response.read().decode("utf-8", "replace")
 
-          print("HTML uzunluğu:", len(html))
-          print("Maçka HTML içinde:", "maçka" in html.lower())
-          print("\n--- OTOPARK / API İZLERİ ---")
+          except Exception as error:
+              print("SAYFA OKUNAMADI:", error)
+              try:
+                  telegram_send(
+                      "⚠️ Maçka İSPARK abonelik kontrolü yapılamadı. "
+                      "Siteye erişim hatası var; kontenjan durumu bilinmiyor."
+                  )
+              except Exception as notify_error:
+                  print("Telegram hata bildirimi gönderilemedi:", notify_error)
+              sys.exit(1)
 
-          patterns = [
-              r'<script[^>]+src=["\']([^"\']+)',
-              r'https?://[^"\' ]+',
-              r'[^"\' ]{0,100}(?:api|otopark|parking|abone)[^"\' ]{0,150}'
-          ]
+          parser = SelectParser()
+          parser.feed(html)
 
-          found = set()
-          for pattern in patterns:
-              for item in re.findall(pattern, html, re.I):
-                  if item not in found:
-                      found.add(item)
-                      print(item[:300])
-                      if len(found) >= 60:
-                          break
-              if len(found) >= 60:
-                  break
+          options = parser.options
+          print("Sayfa başarıyla açıldı.")
+          print("HTML içindeki seçenek sayısı:", len(options))
+          print("Seçenekler:", options[:100])
 
-          print("\n--- FORMDAKİ SELECT ALANLARI ---")
-          for item in re.findall(
-              r'<select\b[^>]*>.*?</select>',
-              html, re.I | re.S
-          ):
-              print(re.sub(r'\s+', ' ', item)[:1000])
+          normalize = lambda s: re.sub(
+              r"\s+", " ", s.casefold().replace("ı", "i")
+          ).strip()
 
-          print("\nİnceleme tamamlandı.")
+          macka_found = any(
+              "macka" in normalize(option)
+              for option in options
+          )
+
+          if macka_found:
+              print("Maçka HTML içindeki select listesinde bulundu.")
+              telegram_send(
+                  "🔔 Maçka İSPARK abonelik başvuru listesinde bulundu. "
+                  "Başvuru ekranından kontenjanı doğrula: "
+                  "https://ispark.istanbul/abone/"
+              )
+          else:
+              print(
+                  "Maçka HTML içindeki select listesinde bulunamadı. "
+                  "Bu, kontenjan olmadığı anlamına kesin olarak gelmez. "
+                  "Liste JavaScript/API ile yükleniyor olabilir. "
+                  "API tespit edilmeden kontenjan yok bildirimi gönderilmeyecek."
+              )
+
           PY
