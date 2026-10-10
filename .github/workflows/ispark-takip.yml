@@ -1,17 +1,21 @@
 name: Macka ISPARK Takip
 
-
 on:
-workflow_dispatch:
-schedule:
-- cron: '*/15 * * * *'
-
+  workflow_dispatch:
+  schedule:
+    - cron: '*/15 * * * *'
 
 jobs:
-check-parking:
-runs-on: ubuntu-latest
+  check-parking:
+    runs-on: ubuntu-latest
 
-
+    steps:
+      - name: Maçka doluluk bilgisini kontrol et
+        env:
+          BOT_TOKEN: $
+          {{ secrets.BOT_TOKEN }}
+          CHAT_ID: $
+          {{ secrets.CHAT_ID }}
 steps:
   - name: Maçka doluluk bilgisini kontrol et
     env:
